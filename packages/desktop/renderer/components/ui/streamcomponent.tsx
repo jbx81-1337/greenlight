@@ -33,7 +33,7 @@ function StreamComponent({
     const [waitingSeconds, setWaitingSeconds] = React.useState(0)
     const [isGamebarVisible, setIsGamebarVisible] = React.useState(false)
     const [mouseSensitivity, setMouseSensitivity] = React.useState(1)
-    const originalGetMouseQueueRef = React.useRef<((size?: number) => any[]) | null>(null)
+    const originalGetMouseQueueMapRef = React.useRef(new WeakMap<any, (size?: number) => any[]>())
 
 
 
@@ -257,13 +257,13 @@ function StreamComponent({
             return
         }
 
-        if (originalGetMouseQueueRef.current === null) {
-            originalGetMouseQueueRef.current = inputProcessor.getMouseQueue.bind(inputProcessor)
+        let originalGetMouseQueue = originalGetMouseQueueMapRef.current.get(inputProcessor)
+        if (originalGetMouseQueue === undefined) {
+            originalGetMouseQueue = inputProcessor.getMouseQueue.bind(inputProcessor)
+            originalGetMouseQueueMapRef.current.set(inputProcessor, originalGetMouseQueue)
         }
 
-        const originalGetMouseQueue = originalGetMouseQueueRef.current
-
-        inputProcessor.getMouseQueue = (size = 30) => {
+        const wrappedGetMouseQueue = (size = 30) => {
             const queuedMouseFrames = originalGetMouseQueue(size)
 
             if (mouseSensitivity === 1) {
@@ -276,10 +276,11 @@ function StreamComponent({
                 Y: Math.round(mouseFrame.Y * mouseSensitivity),
             }))
         }
+        inputProcessor.getMouseQueue = wrappedGetMouseQueue
 
         return () => {
-            if (originalGetMouseQueueRef.current !== null) {
-                inputProcessor.getMouseQueue = originalGetMouseQueueRef.current
+            if (inputProcessor.getMouseQueue === wrappedGetMouseQueue) {
+                inputProcessor.getMouseQueue = originalGetMouseQueue
             }
         }
     }, [xPlayer, mouseSensitivity])
@@ -387,6 +388,12 @@ function StreamComponent({
 
                         <p id="component_streamcomponent_waitingtimes"></p>
                     </Card>
+                </div>
+
+                <div id="component_streamcomponent_gamebar_toggle" className={isGamebarVisible ? 'hidden' : ''}>
+                    <Button label={<span><i className="fa-solid fa-keyboard"></i> Ctrl+Enter</span>} title="Show stream controls" className='btn-small' onClick={() => {
+                        setIsGamebarVisible(true)
+                    }}></Button>
                 </div>
 
                 <div id="component_streamcomponent_gamebar" className={isGamebarVisible ? '' : 'hidden'}>
