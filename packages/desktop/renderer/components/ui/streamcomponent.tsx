@@ -350,15 +350,30 @@ function StreamComponent({
             return
         }
 
-        if (document.pointerLockElement !== null) {
-            document.exitPointerLock()
+        const focusGamebar = () => {
+            gamebarElementRef.current?.focus()
         }
 
         if ('keyboard' in navigator && typeof (navigator as any).keyboard?.unlock === 'function') {
             (navigator as any).keyboard.unlock()
         }
 
-        gamebarElementRef.current?.focus()
+        if (document.pointerLockElement !== null) {
+            const pointerLockChangeHandler = () => {
+                if (document.pointerLockElement === null) {
+                    focusGamebar()
+                    document.removeEventListener('pointerlockchange', pointerLockChangeHandler)
+                }
+            }
+            document.addEventListener('pointerlockchange', pointerLockChangeHandler)
+            document.exitPointerLock()
+
+            return () => {
+                document.removeEventListener('pointerlockchange', pointerLockChangeHandler)
+            }
+        }
+
+        focusGamebar()
     }, [isGamebarVisible])
 
 
