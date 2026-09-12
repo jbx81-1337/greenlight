@@ -5,6 +5,8 @@ interface ButtonProps {
   icon?: string;
   title?: string;
   ariaLabel?: string;
+  ariaExpanded?: boolean;
+  autoBlur?: boolean;
   disabled?: boolean;
   className?: string;
   onClick?: (e) => void;
@@ -15,6 +17,8 @@ function Button({
     icon,
     title,
     ariaLabel,
+    ariaExpanded,
+    autoBlur = true,
     disabled,
     className,
     onClick,
@@ -34,8 +38,10 @@ function Button({
                 backgroundSize: 18,
                 paddingLeft: 35,
                 // height: 41,
-            }:{}} aria-label={ariaLabel} onFocus={ (e) => {
-                e.target.blur() 
+            }:{}} aria-label={ariaLabel} aria-expanded={ariaExpanded} onFocus={ (e) => {
+                if(autoBlur === true){
+                    e.target.blur()
+                }
             }}>{label}</button>
         </React.Fragment>
     )

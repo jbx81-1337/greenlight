@@ -389,7 +389,7 @@ function StreamComponent({
             document.exitPointerLock()
         }) : Promise.resolve()
 
-        Promise.all([keyboardUnlockPromise, pointerUnlockPromise]).finally(() => {
+        Promise.all([keyboardUnlockPromise, pointerUnlockPromise]).then(() => {
             focusGamebar()
         })
 
@@ -506,9 +506,9 @@ function StreamComponent({
                     </Card>
                 </div>
 
-                <div id="component_streamcomponent_gamebar_toggle" className={isGamebarVisible ? 'hidden' : ''}>
-                    <Button label={<span><i className="fa-solid fa-keyboard"></i> Ctrl+Enter</span>} title={t("streamWindow.showControlsTitle")} ariaLabel={t("streamWindow.showControlsTitle")} className='btn-small' onClick={() => {
-                        setIsGamebarVisible(true)
+                <div id="component_streamcomponent_gamebar_toggle">
+                    <Button label={<span><i className="fa-solid fa-keyboard"></i> Ctrl+Enter</span>} title={t("streamWindow.showControlsTitle")} ariaLabel={t("streamWindow.showControlsTitle")} ariaExpanded={isGamebarVisible} autoBlur={false} className='btn-small' onClick={() => {
+                        setIsGamebarVisible((previousState) => !previousState)
                     }}></Button>
                 </div>
 
