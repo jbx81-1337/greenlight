@@ -25,13 +25,15 @@ function StreamComponent({
         return performance.now() / 1000.0
     }
 
-    let lastMovement = 0
     // let gamebarElement = document.getElementById('component_streamcomponent_gamebar')
     let debugElement = document.getElementById('component_streamcomponent_debug')
     let webRtcStatsInterval
 
     const [micStatus, setMicStatus] = React.useState(false)
     const [waitingSeconds, setWaitingSeconds] = React.useState(0)
+    const [isGamebarVisible, setIsGamebarVisible] = React.useState(false)
+    const [mouseSensitivity, setMouseSensitivity] = React.useState(1)
+    const originalGetMouseQueueRef = React.useRef<((size?: number) => any[]) | null>(null)
 
 
 
@@ -48,6 +50,9 @@ function StreamComponent({
             console.error('VolumeSlider: handleChange: failed to find current or lost previous audioelement. Current element:', audioElement)
         }
 
+    }
+    const handleMouseSensitivityChange = (newSensitivity: number) => {
+        setMouseSensitivity(Math.max(0.1, Math.min(1, newSensitivity)))
     }
     const volumeIcon = ( //from https://www.svgrepo.com/svg/502904/volume-low and optimized w/ https://jakearchibald.github.io/svgomg/
         <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 14v-4a1 1 0 0 1 1-1h2.65a1 1 0 0 0 .624-.22l3.101-2.48A1 1 0 0 1 16 7.08v9.84a1 1 0 0 1-1.625.78l-3.101-2.48a1 1 0 0 0-.625-.22H8a1 1 0 0 1-1-1Z" /></svg>
@@ -215,47 +220,25 @@ function StreamComponent({
             }
         }, 33)
 
-        // Gamebar menu mouse events
-        const mouseEvent = () => {
-            lastMovement = Date.now()
-        }
-        window.addEventListener('mousemove', mouseEvent)
-        window.addEventListener('mousedown', mouseEvent)
-
-        const mouseInterval = setInterval(() => {
-            const gamebarElement = document.getElementById('component_streamcomponent_gamebar')
-            if (gamebarElement === null) {
+        // Keyboard events
+        const keyboardPressEvent = (e) => {
+            if (e.ctrlKey === true && e.key === 'Enter') {
+                e.preventDefault()
+                setIsGamebarVisible((previousState) => !previousState)
                 return
             }
 
-            if ((Date.now() - lastMovement) >= 2000) {
-                if (!gamebarElement.className.includes('hidden')) {
-                    gamebarElement.className = 'hidden'
-                }
-
-            } else {
-                if (gamebarElement.className.includes('hidden')) {
-                    gamebarElement.className = ''
-                }
-            }
-        }, 100)
-
-        // Keyboard events
-        const keyboardPressEvent = (e) => {
             switch (e.keyCode) {
                 case 126:
                     toggleDebug()
                     break
             }
         }
-        window.addEventListener('keypress', keyboardPressEvent)
+        window.addEventListener('keydown', keyboardPressEvent)
 
         // cleanup this component
         return () => {
-            window.removeEventListener('mousemove', mouseEvent)
-            window.removeEventListener('mousedown', mouseEvent)
-            window.removeEventListener('keypress', keyboardPressEvent)
-            clearInterval(mouseInterval)
+            window.removeEventListener('keydown', keyboardPressEvent)
 
             // ipcRenderer.removeAllListeners('xcloud');
 
@@ -266,6 +249,40 @@ function StreamComponent({
             (document.getElementById('component_streamcomponent_debug_webrtc_dropped') !== null) ? document.getElementById('component_streamcomponent_debug_webrtc_dropped').innerHTML = '' : false
         }
     }, [])
+
+    React.useEffect(() => {
+        const inputProcessor = xPlayer?.getChannelProcessor('input')
+
+        if (inputProcessor === undefined || typeof inputProcessor.getMouseQueue !== 'function') {
+            return
+        }
+
+        if (originalGetMouseQueueRef.current === null) {
+            originalGetMouseQueueRef.current = inputProcessor.getMouseQueue.bind(inputProcessor)
+        }
+
+        const originalGetMouseQueue = originalGetMouseQueueRef.current
+
+        inputProcessor.getMouseQueue = (size = 30) => {
+            const queuedMouseFrames = originalGetMouseQueue(size)
+
+            if (mouseSensitivity === 1) {
+                return queuedMouseFrames
+            }
+
+            return queuedMouseFrames.map((mouseFrame) => ({
+                ...mouseFrame,
+                X: Math.round(mouseFrame.X * mouseSensitivity),
+                Y: Math.round(mouseFrame.Y * mouseSensitivity),
+            }))
+        }
+
+        return () => {
+            if (originalGetMouseQueueRef.current !== null) {
+                inputProcessor.getMouseQueue = originalGetMouseQueueRef.current
+            }
+        }
+    }, [xPlayer, mouseSensitivity])
 
 
 
@@ -372,7 +389,7 @@ function StreamComponent({
                     </Card>
                 </div>
 
-                <div id="component_streamcomponent_gamebar">
+                <div id="component_streamcomponent_gamebar" className={isGamebarVisible ? '' : 'hidden'}>
                     <div id="component_streamcomponent_gamebar_menu">
                         <div style={{
                             width: '25%',
@@ -406,6 +423,15 @@ function StreamComponent({
                             onChange={handleVolumeChange}
                             label="Volume"
                             svg={volumeIcon}
+                        />
+                        <Slider
+                            id="mouse-sensitivity-slider"
+                            min={0.1}
+                            max={1}
+                            step={0.05}
+                            value={mouseSensitivity}
+                            onChange={handleMouseSensitivityChange}
+                            label="Mouse"
                         />
 
                         <div style={{
