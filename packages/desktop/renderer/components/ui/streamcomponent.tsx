@@ -8,6 +8,54 @@ import uPlot from 'uplot'
 import Ipc from '../../lib/ipc'
 import { useTranslation } from 'react-i18next'
 
+interface MouseQueuePatchState {
+    originalGetMouseQueue: (size?: number) => any[];
+    sensitivity: number;
+    remainders: { x: number; y: number };
+}
+
+const mouseQueuePatchState = new WeakMap<any, MouseQueuePatchState>()
+
+function patchInputProcessorMouseQueue(inputProcessor: any): MouseQueuePatchState {
+    const existingPatchState = mouseQueuePatchState.get(inputProcessor)
+    if (existingPatchState !== undefined) {
+        return existingPatchState
+    }
+
+    const newPatchState: MouseQueuePatchState = {
+        originalGetMouseQueue: inputProcessor.getMouseQueue.bind(inputProcessor),
+        sensitivity: 1,
+        remainders: { x: 0, y: 0 },
+    }
+
+    inputProcessor.getMouseQueue = (size = 30) => {
+        const queuedMouseFrames = newPatchState.originalGetMouseQueue(size)
+
+        if (newPatchState.sensitivity === 1) {
+            return queuedMouseFrames
+        }
+
+        return queuedMouseFrames.map((mouseFrame) => ({
+            ...mouseFrame,
+            X: (() => {
+                const scaledX = (mouseFrame.X * newPatchState.sensitivity) + newPatchState.remainders.x
+                const finalX = Math.trunc(scaledX)
+                newPatchState.remainders.x = scaledX - finalX
+                return finalX
+            })(),
+            Y: (() => {
+                const scaledY = (mouseFrame.Y * newPatchState.sensitivity) + newPatchState.remainders.y
+                const finalY = Math.trunc(scaledY)
+                newPatchState.remainders.y = scaledY - finalY
+                return finalY
+            })(),
+        }))
+    }
+
+    mouseQueuePatchState.set(inputProcessor, newPatchState)
+    return newPatchState
+}
+
 interface StreamComponentProps {
     onDisconnect?: () => void;
     onMenu?: () => void;
@@ -33,8 +81,6 @@ function StreamComponent({
     const [waitingSeconds, setWaitingSeconds] = React.useState(0)
     const [isGamebarVisible, setIsGamebarVisible] = React.useState(false)
     const [mouseSensitivity, setMouseSensitivity] = React.useState(1)
-    const originalGetMouseQueueMapRef = React.useRef(new WeakMap<any, (size?: number) => any[]>())
-    const mouseQueueRemaindersRef = React.useRef(new WeakMap<any, { x: number; y: number }>())
 
 
 
@@ -264,46 +310,10 @@ function StreamComponent({
             return
         }
 
-        let originalGetMouseQueue = originalGetMouseQueueMapRef.current.get(inputProcessor)
-        if (originalGetMouseQueue === undefined) {
-            originalGetMouseQueue = inputProcessor.getMouseQueue.bind(inputProcessor)
-            originalGetMouseQueueMapRef.current.set(inputProcessor, originalGetMouseQueue)
-        }
-        let inputProcessorRemainders = mouseQueueRemaindersRef.current.get(inputProcessor)
-        if (inputProcessorRemainders === undefined) {
-            inputProcessorRemainders = { x: 0, y: 0 }
-            mouseQueueRemaindersRef.current.set(inputProcessor, inputProcessorRemainders)
-        }
-
-        const wrappedGetMouseQueue = (size = 30) => {
-            const queuedMouseFrames = originalGetMouseQueue(size)
-
-            if (mouseSensitivity === 1) {
-                return queuedMouseFrames
-            }
-
-            return queuedMouseFrames.map((mouseFrame) => ({
-                ...mouseFrame,
-                X: (() => {
-                    const scaledX = (mouseFrame.X * mouseSensitivity) + inputProcessorRemainders.x
-                    const finalX = Math.trunc(scaledX)
-                    inputProcessorRemainders.x = scaledX - finalX
-                    return finalX
-                })(),
-                Y: (() => {
-                    const scaledY = (mouseFrame.Y * mouseSensitivity) + inputProcessorRemainders.y
-                    const finalY = Math.trunc(scaledY)
-                    inputProcessorRemainders.y = scaledY - finalY
-                    return finalY
-                })(),
-            }))
-        }
-        inputProcessor.getMouseQueue = wrappedGetMouseQueue
-
-        return () => {
-            if (inputProcessor.getMouseQueue === wrappedGetMouseQueue) {
-                inputProcessor.getMouseQueue = originalGetMouseQueue
-            }
+        const patchState = patchInputProcessorMouseQueue(inputProcessor)
+        patchState.sensitivity = mouseSensitivity
+        if (mouseSensitivity === 1) {
+            patchState.remainders = { x: 0, y: 0 }
         }
     }, [xPlayer, mouseSensitivity])
 
