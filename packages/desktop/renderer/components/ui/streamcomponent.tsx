@@ -97,6 +97,7 @@ function StreamComponent({
     const [waitingSeconds, setWaitingSeconds] = React.useState(0)
     const [isGamebarVisible, setIsGamebarVisible] = React.useState(false)
     const [mouseSensitivity, setMouseSensitivity] = React.useState(1)
+    const gamebarElementRef = React.useRef<HTMLDivElement | null>(null)
 
 
 
@@ -344,6 +345,22 @@ function StreamComponent({
         }
     }, [xPlayer, mouseSensitivity])
 
+    React.useEffect(() => {
+        if (isGamebarVisible !== true) {
+            return
+        }
+
+        if (document.pointerLockElement !== null) {
+            document.exitPointerLock()
+        }
+
+        if ('keyboard' in navigator && typeof (navigator as any).keyboard?.unlock === 'function') {
+            (navigator as any).keyboard.unlock()
+        }
+
+        gamebarElementRef.current?.focus()
+    }, [isGamebarVisible])
+
 
 
     function toggleMic() {
@@ -455,7 +472,7 @@ function StreamComponent({
                     }}></Button>
                 </div>
 
-                <div id="component_streamcomponent_gamebar" className={isGamebarVisible ? '' : 'hidden'}>
+                <div id="component_streamcomponent_gamebar" className={isGamebarVisible ? '' : 'hidden'} ref={gamebarElementRef} tabIndex={-1}>
                     <div id="component_streamcomponent_gamebar_menu">
                         <div style={{
                             width: '25%',
