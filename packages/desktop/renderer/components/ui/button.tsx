@@ -6,6 +6,7 @@ interface ButtonProps {
   title?: string;
   ariaLabel?: string;
   ariaExpanded?: boolean;
+  ariaControls?: string;
   autoBlur?: boolean;
   disabled?: boolean;
   className?: string;
@@ -18,6 +19,7 @@ function Button({
     title,
     ariaLabel,
     ariaExpanded,
+    ariaControls,
     autoBlur = true,
     disabled,
     className,
@@ -38,7 +40,7 @@ function Button({
                 backgroundSize: 18,
                 paddingLeft: 35,
                 // height: 41,
-            }:{}} aria-label={ariaLabel} aria-expanded={ariaExpanded} onFocus={ (e) => {
+            }:{}} aria-label={ariaLabel} aria-expanded={ariaExpanded} aria-controls={ariaControls} onFocus={ (e) => {
                 if(autoBlur === true){
                     e.target.blur()
                 }

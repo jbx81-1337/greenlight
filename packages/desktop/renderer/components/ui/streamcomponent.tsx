@@ -377,11 +377,19 @@ function StreamComponent({
             }
         }
 
-        const keyboardUnlockPromise = ('keyboard' in navigator && typeof (navigator as any).keyboard?.unlock === 'function') ? Promise.resolve((navigator as any).keyboard.unlock()) : Promise.resolve()
+        const keyboardUnlockPromise = ('keyboard' in navigator && typeof (navigator as any).keyboard?.unlock === 'function') ? Promise.resolve((navigator as any).keyboard.unlock()).catch(() => undefined) : Promise.resolve()
 
         const pointerUnlockPromise = (document.pointerLockElement !== null) ? new Promise<void>((resolve) => {
+            const fallbackTimeout = setTimeout(() => {
+                if (pointerLockChangeHandler !== undefined) {
+                    document.removeEventListener('pointerlockchange', pointerLockChangeHandler)
+                }
+                resolve()
+            }, 200)
+
             pointerLockChangeHandler = () => {
                 if (document.pointerLockElement === null) {
+                    clearTimeout(fallbackTimeout)
                     resolve()
                 }
             }
@@ -507,12 +515,12 @@ function StreamComponent({
                 </div>
 
                 <div id="component_streamcomponent_gamebar_toggle">
-                    <Button label={<span><i className="fa-solid fa-keyboard"></i> Ctrl+Enter</span>} title={t("streamWindow.showControlsTitle")} ariaLabel={t("streamWindow.showControlsTitle")} ariaExpanded={isGamebarVisible} autoBlur={false} className='btn-small' onClick={() => {
+                    <Button label={<span><i className="fa-solid fa-keyboard"></i> Ctrl+Enter</span>} title={t("streamWindow.showControlsTitle")} ariaLabel={t("streamWindow.showControlsTitle")} ariaExpanded={isGamebarVisible} ariaControls="component_streamcomponent_gamebar" autoBlur={false} className='btn-small' onClick={() => {
                         setIsGamebarVisible((previousState) => !previousState)
                     }}></Button>
                 </div>
 
-                <div id="component_streamcomponent_gamebar" className={isGamebarVisible ? '' : 'hidden'} ref={gamebarElementRef} tabIndex={-1}>
+                <div id="component_streamcomponent_gamebar" className={isGamebarVisible ? '' : 'hidden'} aria-hidden={!isGamebarVisible} ref={gamebarElementRef} tabIndex={-1}>
                     <div id="component_streamcomponent_gamebar_menu">
                         <div style={{
                             width: '25%',
