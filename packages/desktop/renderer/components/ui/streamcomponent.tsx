@@ -223,6 +223,9 @@ function StreamComponent({
         // Keyboard events
         const keyboardPressEvent = (e) => {
             if (e.ctrlKey === true && e.key === 'Enter') {
+                if (e.repeat === true) {
+                    return
+                }
                 e.preventDefault()
                 setIsGamebarVisible((previousState) => !previousState)
                 return
@@ -230,6 +233,9 @@ function StreamComponent({
 
             switch (e.keyCode) {
                 case 126:
+                    if (e.repeat === true) {
+                        return
+                    }
                     toggleDebug()
                     break
             }
@@ -438,7 +444,7 @@ function StreamComponent({
                             step={0.05}
                             value={mouseSensitivity}
                             onChange={handleMouseSensitivityChange}
-                            label="Mouse"
+                            label="Mouse sensitivity"
                         />
 
                         <div style={{
