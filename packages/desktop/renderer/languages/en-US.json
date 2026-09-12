@@ -245,6 +245,8 @@
       "enableMic": "Enable mic",
       "disableMic": "Disable mic",
       "debugTitle": "Debug",
+      "showControlsTitle": "Show stream controls",
+      "mouseSensitivityLabel": "Mouse sensitivity",
       "itsTakingALittleLonger": "It's taking a little longer.. Your stream may start soon.",
       "startingConnection": "Starting connection...",
       "connectingToConsole": "Connecting to console...",

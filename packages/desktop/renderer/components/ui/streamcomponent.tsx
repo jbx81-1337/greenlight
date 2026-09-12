@@ -12,6 +12,7 @@ interface MouseQueuePatchState {
     originalGetMouseQueue: (size?: number) => any[];
     sensitivity: number;
     remainders: { x: number; y: number };
+    consumerCount: number;
 }
 
 const mouseQueuePatchState = new WeakMap<any, MouseQueuePatchState>()
@@ -19,6 +20,7 @@ const mouseQueuePatchState = new WeakMap<any, MouseQueuePatchState>()
 function patchInputProcessorMouseQueue(inputProcessor: any): MouseQueuePatchState {
     const existingPatchState = mouseQueuePatchState.get(inputProcessor)
     if (existingPatchState !== undefined) {
+        existingPatchState.consumerCount++
         return existingPatchState
     }
 
@@ -26,6 +28,7 @@ function patchInputProcessorMouseQueue(inputProcessor: any): MouseQueuePatchStat
         originalGetMouseQueue: inputProcessor.getMouseQueue.bind(inputProcessor),
         sensitivity: 1,
         remainders: { x: 0, y: 0 },
+        consumerCount: 1,
     }
 
     inputProcessor.getMouseQueue = (size = 30) => {
@@ -54,6 +57,19 @@ function patchInputProcessorMouseQueue(inputProcessor: any): MouseQueuePatchStat
 
     mouseQueuePatchState.set(inputProcessor, newPatchState)
     return newPatchState
+}
+
+function unpatchInputProcessorMouseQueue(inputProcessor: any) {
+    const patchState = mouseQueuePatchState.get(inputProcessor)
+    if (patchState === undefined) {
+        return
+    }
+
+    patchState.consumerCount = Math.max(0, patchState.consumerCount - 1)
+    if (patchState.consumerCount === 0) {
+        inputProcessor.getMouseQueue = patchState.originalGetMouseQueue
+        mouseQueuePatchState.delete(inputProcessor)
+    }
 }
 
 interface StreamComponentProps {
@@ -269,6 +285,13 @@ function StreamComponent({
 
         // Keyboard events
         const keyboardPressEvent = (e) => {
+            const target = e.target as HTMLElement | null
+            const targetTag = target?.tagName?.toLowerCase()
+            const isEditableTarget = target?.isContentEditable === true || targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select'
+            if (isEditableTarget) {
+                return
+            }
+
             if (e.ctrlKey === true && e.key === 'Enter') {
                 if (e.repeat === true) {
                     return
@@ -314,6 +337,10 @@ function StreamComponent({
         patchState.sensitivity = mouseSensitivity
         if (mouseSensitivity === 1) {
             patchState.remainders = { x: 0, y: 0 }
+        }
+
+        return () => {
+            unpatchInputProcessorMouseQueue(inputProcessor)
         }
     }, [xPlayer, mouseSensitivity])
 
@@ -423,7 +450,7 @@ function StreamComponent({
                 </div>
 
                 <div id="component_streamcomponent_gamebar_toggle" className={isGamebarVisible ? 'hidden' : ''}>
-                    <Button label={<span><i className="fa-solid fa-keyboard"></i> Ctrl+Enter</span>} title="Show stream controls" className='btn-small' onClick={() => {
+                    <Button label={<span><i className="fa-solid fa-keyboard"></i> Ctrl+Enter</span>} title={t("streamWindow.showControlsTitle")} className='btn-small' onClick={() => {
                         setIsGamebarVisible(true)
                     }}></Button>
                 </div>
@@ -470,7 +497,7 @@ function StreamComponent({
                             step={0.05}
                             value={mouseSensitivity}
                             onChange={handleMouseSensitivityChange}
-                            label="Mouse sensitivity"
+                            label={t("streamWindow.mouseSensitivityLabel")}
                         />
 
                         <div style={{

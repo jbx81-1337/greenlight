@@ -230,6 +230,8 @@
       "enableMic": "Activar micrófono",
       "disableMic": "Silenciar micrófono",
       "debugTitle": "Depuración",
+      "showControlsTitle": "Mostrar controles de streaming",
+      "mouseSensitivityLabel": "Sensibilidad del ratón",
       "itsTakingALittleLonger": "Está tardando un poco más de lo habitual... El streaming debería comenzar pronto.",
       "startingConnection": "Iniciando conexión...",
       "connectingToConsole": "Conectando con la consola...",

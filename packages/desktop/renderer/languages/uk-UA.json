@@ -245,6 +245,8 @@
       "enableMic": "Увімкнути мікрофон",
       "disableMic": "Вимкнути мікрофон",
       "debugTitle": "Відлагодження",
+      "showControlsTitle": "Показати елементи керування трансляцією",
+      "mouseSensitivityLabel": "Чутливість миші",
       "itsTakingALittleLonger": "Це займає трохи більше часу.. Ваша трансляція може скоро початися.",
       "startingConnection": "Початок підключення...",
       "connectingToConsole": "Підключення до консолі...",
