@@ -34,6 +34,7 @@ function StreamComponent({
     const [isGamebarVisible, setIsGamebarVisible] = React.useState(false)
     const [mouseSensitivity, setMouseSensitivity] = React.useState(1)
     const originalGetMouseQueueMapRef = React.useRef(new WeakMap<any, (size?: number) => any[]>())
+    const mouseQueueRemaindersRef = React.useRef(new WeakMap<any, { x: number; y: number }>())
 
 
 
@@ -52,7 +53,7 @@ function StreamComponent({
 
     }
     const handleMouseSensitivityChange = (newSensitivity: number) => {
-        setMouseSensitivity(Math.max(0.1, Math.min(1, newSensitivity)))
+        setMouseSensitivity(Math.max(0.1, Math.min(2, newSensitivity)))
     }
     const volumeIcon = ( //from https://www.svgrepo.com/svg/502904/volume-low and optimized w/ https://jakearchibald.github.io/svgomg/
         <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 14v-4a1 1 0 0 1 1-1h2.65a1 1 0 0 0 .624-.22l3.101-2.48A1 1 0 0 1 16 7.08v9.84a1 1 0 0 1-1.625.78l-3.101-2.48a1 1 0 0 0-.625-.22H8a1 1 0 0 1-1-1Z" /></svg>
@@ -268,6 +269,11 @@ function StreamComponent({
             originalGetMouseQueue = inputProcessor.getMouseQueue.bind(inputProcessor)
             originalGetMouseQueueMapRef.current.set(inputProcessor, originalGetMouseQueue)
         }
+        let inputProcessorRemainders = mouseQueueRemaindersRef.current.get(inputProcessor)
+        if (inputProcessorRemainders === undefined) {
+            inputProcessorRemainders = { x: 0, y: 0 }
+            mouseQueueRemaindersRef.current.set(inputProcessor, inputProcessorRemainders)
+        }
 
         const wrappedGetMouseQueue = (size = 30) => {
             const queuedMouseFrames = originalGetMouseQueue(size)
@@ -278,8 +284,18 @@ function StreamComponent({
 
             return queuedMouseFrames.map((mouseFrame) => ({
                 ...mouseFrame,
-                X: Math.round(mouseFrame.X * mouseSensitivity),
-                Y: Math.round(mouseFrame.Y * mouseSensitivity),
+                X: (() => {
+                    const scaledX = (mouseFrame.X * mouseSensitivity) + inputProcessorRemainders.x
+                    const finalX = Math.trunc(scaledX)
+                    inputProcessorRemainders.x = scaledX - finalX
+                    return finalX
+                })(),
+                Y: (() => {
+                    const scaledY = (mouseFrame.Y * mouseSensitivity) + inputProcessorRemainders.y
+                    const finalY = Math.trunc(scaledY)
+                    inputProcessorRemainders.y = scaledY - finalY
+                    return finalY
+                })(),
             }))
         }
         inputProcessor.getMouseQueue = wrappedGetMouseQueue
@@ -440,7 +456,7 @@ function StreamComponent({
                         <Slider
                             id="mouse-sensitivity-slider"
                             min={0.1}
-                            max={1}
+                            max={2}
                             step={0.05}
                             value={mouseSensitivity}
                             onChange={handleMouseSensitivityChange}
