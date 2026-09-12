@@ -4,6 +4,10 @@ interface ButtonProps {
   label: string | any;
   icon?: string;
   title?: string;
+  ariaLabel?: string;
+  ariaExpanded?: boolean;
+  ariaControls?: string;
+  autoBlur?: boolean;
   disabled?: boolean;
   className?: string;
   onClick?: (e) => void;
@@ -13,6 +17,10 @@ function Button({
     label,
     icon,
     title,
+    ariaLabel,
+    ariaExpanded,
+    ariaControls,
+    autoBlur = true,
     disabled,
     className,
     onClick,
@@ -32,8 +40,10 @@ function Button({
                 backgroundSize: 18,
                 paddingLeft: 35,
                 // height: 41,
-            }:{}} onFocus={ (e) => {
-                e.target.blur() 
+            }:{}} aria-label={ariaLabel} aria-expanded={ariaExpanded} aria-controls={ariaControls} onFocus={ (e) => {
+                if(autoBlur === true){
+                    e.target.blur()
+                }
             }}>{label}</button>
         </React.Fragment>
     )

@@ -230,6 +230,8 @@
       "enableMic": "Aktiviere Mikro",
       "disableMic": "Deaktiviere Mikro",
       "debugTitle": "Fehlersuche",
+      "showControlsTitle": "Stream-Steuerung anzeigen",
+      "mouseSensitivityLabel": "Mausempfindlichkeit",
       "itsTakingALittleLonger": "Es dauert noch einen Moment.. Dein Stream startet bald.",
       "startingConnection": "Verbindungsaufbau...",
       "connectingToConsole": "Verbinde mit Konsole...",

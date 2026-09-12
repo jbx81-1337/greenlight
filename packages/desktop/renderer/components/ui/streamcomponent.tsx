@@ -8,6 +8,91 @@ import uPlot from 'uplot'
 import Ipc from '../../lib/ipc'
 import { useTranslation } from 'react-i18next'
 
+interface MouseQueuePatchState {
+    originalGetMouseQueue: (size?: number) => any[];
+    remainders: { x: number; y: number };
+    sensitivities: Map<symbol, number>;
+    sensitivityOrder: symbol[];
+}
+
+const mouseQueuePatchState = new WeakMap<any, MouseQueuePatchState>()
+
+function getEffectiveSensitivity(patchState: MouseQueuePatchState): number {
+    for (let orderIndex = patchState.sensitivityOrder.length - 1; orderIndex >= 0; orderIndex--) {
+        const sensitivityToken = patchState.sensitivityOrder[orderIndex]
+        const sensitivity = patchState.sensitivities.get(sensitivityToken)
+        if (sensitivity !== undefined) {
+            return sensitivity
+        }
+    }
+    return 1
+}
+
+function patchInputProcessorMouseQueue(inputProcessor: any, sensitivityToken: symbol, sensitivity: number): MouseQueuePatchState {
+    const existingPatchState = mouseQueuePatchState.get(inputProcessor)
+    if (existingPatchState !== undefined) {
+        existingPatchState.sensitivities.set(sensitivityToken, sensitivity)
+        if (existingPatchState.sensitivityOrder.includes(sensitivityToken) === false) {
+            existingPatchState.sensitivityOrder.push(sensitivityToken)
+        }
+        if (sensitivity === 1) {
+            existingPatchState.remainders = { x: 0, y: 0 }
+        }
+        return existingPatchState
+    }
+
+    const newPatchState: MouseQueuePatchState = {
+        originalGetMouseQueue: inputProcessor.getMouseQueue.bind(inputProcessor),
+        remainders: { x: 0, y: 0 },
+        sensitivities: new Map<symbol, number>([[sensitivityToken, sensitivity]]),
+        sensitivityOrder: [sensitivityToken],
+    }
+
+    inputProcessor.getMouseQueue = (size = 30) => {
+        const sensitivity = getEffectiveSensitivity(newPatchState)
+        const queuedMouseFrames = newPatchState.originalGetMouseQueue(size)
+
+        if (sensitivity === 1) {
+            newPatchState.remainders = { x: 0, y: 0 }
+            return queuedMouseFrames
+        }
+
+        return queuedMouseFrames.map((mouseFrame) => ({
+            ...mouseFrame,
+            X: (() => {
+                const scaledX = (mouseFrame.X * sensitivity) + newPatchState.remainders.x
+                const finalX = Math.trunc(scaledX)
+                newPatchState.remainders.x = scaledX - finalX
+                return finalX
+            })(),
+            Y: (() => {
+                const scaledY = (mouseFrame.Y * sensitivity) + newPatchState.remainders.y
+                const finalY = Math.trunc(scaledY)
+                newPatchState.remainders.y = scaledY - finalY
+                return finalY
+            })(),
+        }))
+    }
+
+    mouseQueuePatchState.set(inputProcessor, newPatchState)
+    return newPatchState
+}
+
+function unpatchInputProcessorMouseQueue(inputProcessor: any, sensitivityToken: symbol) {
+    const patchState = mouseQueuePatchState.get(inputProcessor)
+    if (patchState === undefined) {
+        return
+    }
+
+    patchState.sensitivities.delete(sensitivityToken)
+    patchState.sensitivityOrder = patchState.sensitivityOrder.filter((token) => token !== sensitivityToken)
+
+    if (patchState.sensitivities.size === 0) {
+        inputProcessor.getMouseQueue = patchState.originalGetMouseQueue
+        mouseQueuePatchState.delete(inputProcessor)
+    }
+}
+
 interface StreamComponentProps {
     onDisconnect?: () => void;
     onMenu?: () => void;
@@ -25,13 +110,16 @@ function StreamComponent({
         return performance.now() / 1000.0
     }
 
-    let lastMovement = 0
     // let gamebarElement = document.getElementById('component_streamcomponent_gamebar')
     let debugElement = document.getElementById('component_streamcomponent_debug')
     let webRtcStatsInterval
 
     const [micStatus, setMicStatus] = React.useState(false)
     const [waitingSeconds, setWaitingSeconds] = React.useState(0)
+    const [isGamebarVisible, setIsGamebarVisible] = React.useState(false)
+    const [mouseSensitivity, setMouseSensitivity] = React.useState(1)
+    const gamebarElementRef = React.useRef<HTMLDivElement | null>(null)
+    const mouseSensitivityTokenRef = React.useRef(Symbol('streamcomponent-mouse-sensitivity-token'))
 
 
 
@@ -48,6 +136,9 @@ function StreamComponent({
             console.error('VolumeSlider: handleChange: failed to find current or lost previous audioelement. Current element:', audioElement)
         }
 
+    }
+    const handleMouseSensitivityChange = (newSensitivity: number) => {
+        setMouseSensitivity(Math.max(0.1, Math.min(2, newSensitivity)))
     }
     const volumeIcon = ( //from https://www.svgrepo.com/svg/502904/volume-low and optimized w/ https://jakearchibald.github.io/svgomg/
         <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 14v-4a1 1 0 0 1 1-1h2.65a1 1 0 0 0 .624-.22l3.101-2.48A1 1 0 0 1 16 7.08v9.84a1 1 0 0 1-1.625.78l-3.101-2.48a1 1 0 0 0-.625-.22H8a1 1 0 0 1-1-1Z" /></svg>
@@ -215,47 +306,38 @@ function StreamComponent({
             }
         }, 33)
 
-        // Gamebar menu mouse events
-        const mouseEvent = () => {
-            lastMovement = Date.now()
-        }
-        window.addEventListener('mousemove', mouseEvent)
-        window.addEventListener('mousedown', mouseEvent)
-
-        const mouseInterval = setInterval(() => {
-            const gamebarElement = document.getElementById('component_streamcomponent_gamebar')
-            if (gamebarElement === null) {
+        // Keyboard events
+        const keyboardPressEvent = (e) => {
+            const target = e.target as HTMLElement | null
+            const targetTag = target?.tagName?.toLowerCase()
+            const isEditableTarget = target?.isContentEditable === true || targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select'
+            if (isEditableTarget) {
                 return
             }
 
-            if ((Date.now() - lastMovement) >= 2000) {
-                if (!gamebarElement.className.includes('hidden')) {
-                    gamebarElement.className = 'hidden'
+            if (e.ctrlKey === true && e.key === 'Enter') {
+                if (e.repeat === true) {
+                    return
                 }
-
-            } else {
-                if (gamebarElement.className.includes('hidden')) {
-                    gamebarElement.className = ''
-                }
+                e.preventDefault()
+                setIsGamebarVisible((previousState) => !previousState)
+                return
             }
-        }, 100)
 
-        // Keyboard events
-        const keyboardPressEvent = (e) => {
             switch (e.keyCode) {
                 case 126:
+                    if (e.repeat === true) {
+                        return
+                    }
                     toggleDebug()
                     break
             }
         }
-        window.addEventListener('keypress', keyboardPressEvent)
+        window.addEventListener('keydown', keyboardPressEvent)
 
         // cleanup this component
         return () => {
-            window.removeEventListener('mousemove', mouseEvent)
-            window.removeEventListener('mousedown', mouseEvent)
-            window.removeEventListener('keypress', keyboardPressEvent)
-            clearInterval(mouseInterval)
+            window.removeEventListener('keydown', keyboardPressEvent)
 
             // ipcRenderer.removeAllListeners('xcloud');
 
@@ -266,6 +348,66 @@ function StreamComponent({
             (document.getElementById('component_streamcomponent_debug_webrtc_dropped') !== null) ? document.getElementById('component_streamcomponent_debug_webrtc_dropped').innerHTML = '' : false
         }
     }, [])
+
+    React.useEffect(() => {
+        const inputProcessor = xPlayer?.getChannelProcessor('input')
+
+        if (inputProcessor === undefined || typeof inputProcessor.getMouseQueue !== 'function') {
+            return
+        }
+
+        patchInputProcessorMouseQueue(inputProcessor, mouseSensitivityTokenRef.current, mouseSensitivity)
+
+        return () => {
+            unpatchInputProcessorMouseQueue(inputProcessor, mouseSensitivityTokenRef.current)
+        }
+    }, [xPlayer, mouseSensitivity])
+
+    React.useEffect(() => {
+        if (isGamebarVisible !== true) {
+            return
+        }
+
+        let shouldFocusGamebar = true
+        let pointerLockChangeHandler: (() => void) | undefined
+
+        const focusGamebar = () => {
+            if (shouldFocusGamebar === true) {
+                gamebarElementRef.current?.focus()
+            }
+        }
+
+        const keyboardUnlockPromise = ('keyboard' in navigator && typeof (navigator as any).keyboard?.unlock === 'function') ? Promise.resolve((navigator as any).keyboard.unlock()).catch(() => undefined) : Promise.resolve()
+
+        const pointerUnlockPromise = (document.pointerLockElement !== null) ? new Promise<void>((resolve) => {
+            const fallbackTimeout = setTimeout(() => {
+                if (pointerLockChangeHandler !== undefined) {
+                    document.removeEventListener('pointerlockchange', pointerLockChangeHandler)
+                }
+                resolve()
+            }, 200)
+
+            pointerLockChangeHandler = () => {
+                if (document.pointerLockElement === null) {
+                    clearTimeout(fallbackTimeout)
+                    resolve()
+                }
+            }
+            document.addEventListener('pointerlockchange', pointerLockChangeHandler)
+            document.exitPointerLock()
+        }) : Promise.resolve()
+
+        Promise.all([keyboardUnlockPromise, pointerUnlockPromise]).then(() => {
+            focusGamebar()
+        })
+
+        return () => {
+            shouldFocusGamebar = false
+            if (pointerLockChangeHandler !== undefined) {
+                document.removeEventListener('pointerlockchange', pointerLockChangeHandler)
+            }
+        }
+    }, [isGamebarVisible])
 
 
 
@@ -372,7 +514,13 @@ function StreamComponent({
                     </Card>
                 </div>
 
-                <div id="component_streamcomponent_gamebar">
+                <div id="component_streamcomponent_gamebar_toggle">
+                    <Button label={<span><i className="fa-solid fa-keyboard"></i> Ctrl+Enter</span>} title={t("streamWindow.showControlsTitle")} ariaLabel={t("streamWindow.showControlsTitle")} ariaExpanded={isGamebarVisible} ariaControls="component_streamcomponent_gamebar" autoBlur={false} className='btn-small' onClick={() => {
+                        setIsGamebarVisible((previousState) => !previousState)
+                    }}></Button>
+                </div>
+
+                <div id="component_streamcomponent_gamebar" className={isGamebarVisible ? '' : 'hidden'} aria-hidden={!isGamebarVisible} ref={gamebarElementRef} tabIndex={-1}>
                     <div id="component_streamcomponent_gamebar_menu">
                         <div style={{
                             width: '25%',
@@ -406,6 +554,15 @@ function StreamComponent({
                             onChange={handleVolumeChange}
                             label="Volume"
                             svg={volumeIcon}
+                        />
+                        <Slider
+                            id="mouse-sensitivity-slider"
+                            min={0.1}
+                            max={2}
+                            step={0.05}
+                            value={mouseSensitivity}
+                            onChange={handleMouseSensitivityChange}
+                            label={t("streamWindow.mouseSensitivityLabel")}
                         />
 
                         <div style={{

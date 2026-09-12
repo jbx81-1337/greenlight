@@ -85,6 +85,18 @@ div#component_streamcomponent_gamebar {
 
 div#component_streamcomponent_gamebar.hidden {
     opacity: 0;
+    pointer-events: none;
+}
+
+div#component_streamcomponent_gamebar_toggle {
+    z-index: 99;
+    position: fixed;
+    top: 15px;
+    right: 20px;
+}
+
+div#component_streamcomponent_gamebar_toggle.hidden {
+    display: none;
 }
 
 div#component_streamcomponent_gamebar div#component_streamcomponent_gamebar_menu {

@@ -245,6 +245,8 @@
       "enableMic": "Включить микрофон",
       "disableMic": "Выключить микрофон",
       "debugTitle": "Отладка",
+      "showControlsTitle": "Показать элементы управления трансляцией",
+      "mouseSensitivityLabel": "Чувствительность мыши",
       "itsTakingALittleLonger": "Это занимает немного больше времени.. Ваша трансляция может скоро начаться.",
       "startingConnection": "Начало подключения...",
       "connectingToConsole": "Подключение к консоли...",
