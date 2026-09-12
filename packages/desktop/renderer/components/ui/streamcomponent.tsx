@@ -10,44 +10,63 @@ import { useTranslation } from 'react-i18next'
 
 interface MouseQueuePatchState {
     originalGetMouseQueue: (size?: number) => any[];
-    sensitivity: number;
     remainders: { x: number; y: number };
-    consumerCount: number;
+    sensitivities: Map<symbol, number>;
+    sensitivityOrder: symbol[];
 }
 
 const mouseQueuePatchState = new WeakMap<any, MouseQueuePatchState>()
 
-function patchInputProcessorMouseQueue(inputProcessor: any): MouseQueuePatchState {
+function getEffectiveSensitivity(patchState: MouseQueuePatchState): number {
+    for (let orderIndex = patchState.sensitivityOrder.length - 1; orderIndex >= 0; orderIndex--) {
+        const sensitivityToken = patchState.sensitivityOrder[orderIndex]
+        const sensitivity = patchState.sensitivities.get(sensitivityToken)
+        if (sensitivity !== undefined) {
+            return sensitivity
+        }
+    }
+    return 1
+}
+
+function patchInputProcessorMouseQueue(inputProcessor: any, sensitivityToken: symbol, sensitivity: number): MouseQueuePatchState {
     const existingPatchState = mouseQueuePatchState.get(inputProcessor)
     if (existingPatchState !== undefined) {
-        existingPatchState.consumerCount++
+        existingPatchState.sensitivities.set(sensitivityToken, sensitivity)
+        if (existingPatchState.sensitivityOrder.includes(sensitivityToken) === false) {
+            existingPatchState.sensitivityOrder.push(sensitivityToken)
+        }
+        if (sensitivity === 1) {
+            existingPatchState.remainders = { x: 0, y: 0 }
+        }
         return existingPatchState
     }
 
     const newPatchState: MouseQueuePatchState = {
         originalGetMouseQueue: inputProcessor.getMouseQueue.bind(inputProcessor),
-        sensitivity: 1,
         remainders: { x: 0, y: 0 },
-        consumerCount: 1,
+        sensitivities: new Map<symbol, number>([[sensitivityToken, sensitivity]]),
+        sensitivityOrder: [sensitivityToken],
     }
 
     inputProcessor.getMouseQueue = (size = 30) => {
+        const sensitivity = getEffectiveSensitivity(newPatchState)
         const queuedMouseFrames = newPatchState.originalGetMouseQueue(size)
 
-        if (newPatchState.sensitivity === 1) {
+        if (sensitivity === 1) {
+            newPatchState.remainders = { x: 0, y: 0 }
             return queuedMouseFrames
         }
 
         return queuedMouseFrames.map((mouseFrame) => ({
             ...mouseFrame,
             X: (() => {
-                const scaledX = (mouseFrame.X * newPatchState.sensitivity) + newPatchState.remainders.x
+                const scaledX = (mouseFrame.X * sensitivity) + newPatchState.remainders.x
                 const finalX = Math.trunc(scaledX)
                 newPatchState.remainders.x = scaledX - finalX
                 return finalX
             })(),
             Y: (() => {
-                const scaledY = (mouseFrame.Y * newPatchState.sensitivity) + newPatchState.remainders.y
+                const scaledY = (mouseFrame.Y * sensitivity) + newPatchState.remainders.y
                 const finalY = Math.trunc(scaledY)
                 newPatchState.remainders.y = scaledY - finalY
                 return finalY
@@ -59,14 +78,16 @@ function patchInputProcessorMouseQueue(inputProcessor: any): MouseQueuePatchStat
     return newPatchState
 }
 
-function unpatchInputProcessorMouseQueue(inputProcessor: any) {
+function unpatchInputProcessorMouseQueue(inputProcessor: any, sensitivityToken: symbol) {
     const patchState = mouseQueuePatchState.get(inputProcessor)
     if (patchState === undefined) {
         return
     }
 
-    patchState.consumerCount = Math.max(0, patchState.consumerCount - 1)
-    if (patchState.consumerCount === 0) {
+    patchState.sensitivities.delete(sensitivityToken)
+    patchState.sensitivityOrder = patchState.sensitivityOrder.filter((token) => token !== sensitivityToken)
+
+    if (patchState.sensitivities.size === 0) {
         inputProcessor.getMouseQueue = patchState.originalGetMouseQueue
         mouseQueuePatchState.delete(inputProcessor)
     }
@@ -98,6 +119,7 @@ function StreamComponent({
     const [isGamebarVisible, setIsGamebarVisible] = React.useState(false)
     const [mouseSensitivity, setMouseSensitivity] = React.useState(1)
     const gamebarElementRef = React.useRef<HTMLDivElement | null>(null)
+    const mouseSensitivityTokenRef = React.useRef(Symbol('streamcomponent-mouse-sensitivity-token'))
 
 
 
@@ -334,14 +356,10 @@ function StreamComponent({
             return
         }
 
-        const patchState = patchInputProcessorMouseQueue(inputProcessor)
-        patchState.sensitivity = mouseSensitivity
-        if (mouseSensitivity === 1) {
-            patchState.remainders = { x: 0, y: 0 }
-        }
+        patchInputProcessorMouseQueue(inputProcessor, mouseSensitivityTokenRef.current, mouseSensitivity)
 
         return () => {
-            unpatchInputProcessorMouseQueue(inputProcessor)
+            unpatchInputProcessorMouseQueue(inputProcessor, mouseSensitivityTokenRef.current)
         }
     }, [xPlayer, mouseSensitivity])
 
@@ -350,30 +368,37 @@ function StreamComponent({
             return
         }
 
+        let shouldFocusGamebar = true
+        let pointerLockChangeHandler: (() => void) | undefined
+
         const focusGamebar = () => {
-            gamebarElementRef.current?.focus()
+            if (shouldFocusGamebar === true) {
+                gamebarElementRef.current?.focus()
+            }
         }
 
-        if ('keyboard' in navigator && typeof (navigator as any).keyboard?.unlock === 'function') {
-            (navigator as any).keyboard.unlock()
-        }
+        const keyboardUnlockPromise = ('keyboard' in navigator && typeof (navigator as any).keyboard?.unlock === 'function') ? Promise.resolve((navigator as any).keyboard.unlock()) : Promise.resolve()
 
-        if (document.pointerLockElement !== null) {
-            const pointerLockChangeHandler = () => {
+        const pointerUnlockPromise = (document.pointerLockElement !== null) ? new Promise<void>((resolve) => {
+            pointerLockChangeHandler = () => {
                 if (document.pointerLockElement === null) {
-                    focusGamebar()
-                    document.removeEventListener('pointerlockchange', pointerLockChangeHandler)
+                    resolve()
                 }
             }
             document.addEventListener('pointerlockchange', pointerLockChangeHandler)
             document.exitPointerLock()
+        }) : Promise.resolve()
 
-            return () => {
+        Promise.all([keyboardUnlockPromise, pointerUnlockPromise]).finally(() => {
+            focusGamebar()
+        })
+
+        return () => {
+            shouldFocusGamebar = false
+            if (pointerLockChangeHandler !== undefined) {
                 document.removeEventListener('pointerlockchange', pointerLockChangeHandler)
             }
         }
-
-        focusGamebar()
     }, [isGamebarVisible])
 
 
@@ -482,7 +507,7 @@ function StreamComponent({
                 </div>
 
                 <div id="component_streamcomponent_gamebar_toggle" className={isGamebarVisible ? 'hidden' : ''}>
-                    <Button label={<span><i className="fa-solid fa-keyboard"></i> Ctrl+Enter</span>} title={t("streamWindow.showControlsTitle")} className='btn-small' onClick={() => {
+                    <Button label={<span><i className="fa-solid fa-keyboard"></i> Ctrl+Enter</span>} title={t("streamWindow.showControlsTitle")} ariaLabel={t("streamWindow.showControlsTitle")} className='btn-small' onClick={() => {
                         setIsGamebarVisible(true)
                     }}></Button>
                 </div>

@@ -4,6 +4,7 @@ interface ButtonProps {
   label: string | any;
   icon?: string;
   title?: string;
+  ariaLabel?: string;
   disabled?: boolean;
   className?: string;
   onClick?: (e) => void;
@@ -13,6 +14,7 @@ function Button({
     label,
     icon,
     title,
+    ariaLabel,
     disabled,
     className,
     onClick,
@@ -32,7 +34,7 @@ function Button({
                 backgroundSize: 18,
                 paddingLeft: 35,
                 // height: 41,
-            }:{}} onFocus={ (e) => {
+            }:{}} aria-label={ariaLabel} onFocus={ (e) => {
                 e.target.blur() 
             }}>{label}</button>
         </React.Fragment>
